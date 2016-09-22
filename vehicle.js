@@ -1,14 +1,14 @@
 var MongoClient = require('mongodb').MongoClient;
 
-MongoClient.connect('mongodb://localhost:27017/Vision', function (err, db) {
+MongoClient.connect('mongodb://localhost:27017/vision2', function (err, db) {
     if (err) {
         console.log(err);
         return;
     }
 
     console.log('connected');
-    var clients = db.collection('Client');
-    var vehicles = db.collection('Vehicle');
+    var clients = db.collection('clients');
+    var vehicles = db.collection('vehicles');
     vehicles.find().forEach(
         function (vehicle) {
             clients.findOne({ OldId: vehicle.ClientId }, function (err, client) {
