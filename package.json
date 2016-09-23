@@ -11,5 +11,9 @@
   "license": "ISC",
   "dependencies": {
     "mongodb": "^2.2.9"
+  },
+  "devDependencies": {
+    "eslint": "^3.5.0",
+    "jsonlint": "^1.6.2"
   }
 }
