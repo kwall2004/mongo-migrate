@@ -25,7 +25,7 @@ MongoClient.connect(uri, function (err, db) {
               console.log(err);
               return;
             }
-
+            
             console.log(result.result);
           });
         }
