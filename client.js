@@ -12,16 +12,14 @@ var connection = mysql.createConnection({
 
 connection.connect();
 
-connection.query('SELECT u.UserInfoID, u.BsnsInfoID, bi.BsnsName, u.LognID, u.UserName, u.Email ' +
-  'FROM UserInfo u ' +
-  'LEFT JOIN BsnsInfo bi ON bi.BsnsInfoID = u.BsnsInfoID', function (err, rows, fields) {
+connection.query('SELECT BsnsInfoID, BsnsName, Adrs1, Adrs2, City, Stat, Ctry, Zip, Phone ' +
+  'FROM BsnsInfo', function (err, rows, fields) {
     if (err) throw err;
 
     MongoClient.connect(uri, function (err, db) {
       if (err) throw err;
 
       var clients = db.collection('clients');
-      var users = db.collection('users');
 
       function processRow(rows, i) {
         if (i == rows.length) {
@@ -32,28 +30,23 @@ connection.query('SELECT u.UserInfoID, u.BsnsInfoID, bi.BsnsName, u.LognID, u.Us
         var row = rows[i];
 
         var doc = {
-          OldId: row.UserInfoID,
-          ClientId: null,
-          ClientName: row.BsnsName,
-          LoginId: row.LognID,
-          UserName: row.UserName,
-          Email: row.Email
+          OldId: row.BsnsInfoID,
+          Name: row.BsnsName,
+          Address1: row.Adrs1,
+          Address2: row.Adrs2,
+          City: row.City,
+          State: row.Stat,
+          Country: row.Ctry,
+          Zip: row.Zip,
+          Phone: row.Phone
         };
 
-        clients.findOne({ OldId: row.BsnsInfoID }, function (err, client) {
+        clients.insertOne(doc, function (err, result) {
           if (err) throw err;
 
-          if (client) {
-            doc.ClientId = client._id.toString();
-          }
+          console.log(i, result.result);
 
-          users.insertOne(doc, function (err, result) {
-            if (err) throw err;
-
-            console.log(i, result.result);
-
-            processRow(rows, i + 1);
-          });
+          processRow(rows, i + 1);
         });
       }
 

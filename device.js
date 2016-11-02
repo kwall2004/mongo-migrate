@@ -1,44 +1,64 @@
+var mysql = require('mysql');
 var MongoClient = require('mongodb').MongoClient;
 // var uri = 'mongodb://localhost:27017/vision2';
 var uri = 'mongodb://heroku_9d3ppsr0:a706flgp82q7qenmd166qmvq8d@ds051655.mlab.com:51655/heroku_9d3ppsr0';
 
-MongoClient.connect(uri, function (err, db) {
-  if (err) {
-    console.log(err);
-    return;
-  }
+var connection = mysql.createConnection({
+  host: '192.168.53.120',
+  user: 'root',
+  password: '.root4mysql',
+  database: 'vts_stage'
+});
 
-  console.log('connected');
-  var clients = db.collection('clients');
-  var devices = db.collection('devices');
-  devices.find().forEach(
-    function (device) {
-      clients.findOne({ OldId: device.ClientId }, function (err, client) {
-        if (err) {
-          console.log(err);
+connection.connect();
+
+connection.query('SELECT d.DvceID, d.BsnsInfoID, bi.BsnsName, d.IMEI, d.GrupID, d.FWVrsn, d.ConfVrsn, d.SrlNum ' +
+  'FROM Dvce d ' +
+  'LEFT JOIN BsnsInfo bi ON bi.BsnsInfoID = d.BsnsInfoID', function (err, rows, fields) {
+    if (err) throw err;
+
+    MongoClient.connect(uri, function (err, db) {
+      if (err) throw err;
+
+      var clients = db.collection('clients');
+      var devices = db.collection('devices');
+
+      function processRow(rows, i) {
+        if (i == rows.length) {
+          console.log('done');
           return;
         }
 
-        if (client) {
-          devices.updateOne({ _id: device._id }, { $set: { ClientId: client._id } }, function (err, result) {
-            if (err) {
-              console.log(err);
-              return;
-            }
-            
-            console.log(result.result);
-          });
-        }
-      });
+        var row = rows[i];
 
-      devices.updateOne({ _id: device._id }, { $set: { IMEI: device.IMEI.toString() }});
-      devices.updateOne({ _id: device._id }, { $set: { SerialNumber: device.SerialNumber.toString() }});
-      devices.updateOne({ _id: device._id }, { $set: { GroupId: parseInt(device.GroupId) }});
-    },
-    function (err) {
-      if (err) {
-        console.log(err);
+        var doc = {
+          OldId: row.DvceID,
+          ClientId: null,
+          ClientName: row.BsnsName,
+          IMEI: row.IMEI.toString(),
+          GroupId: parseInt(row.GrupID),
+          FirmwareVersion: row.FWVrsn,
+          ConfigVersion: row.ConfVrsn,
+          SerialNumber: row.SrlNum ? row.SrlNum.toString() : null
+        };
+
+        clients.findOne({ OldId: row.BsnsInfoID }, function (err, client) {
+          if (err) throw err;
+
+          if (client) {
+            doc.ClientId = client._id.toString();
+          }
+
+          devices.insertOne(doc, function (err, result) {
+            if (err) throw err;
+
+            console.log(i, result.result);
+
+            processRow(rows, i + 1);
+          });
+        });
       }
-    }
-  );
-})
+
+      processRow(rows, 0);
+    });
+  });
