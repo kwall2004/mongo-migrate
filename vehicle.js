@@ -64,7 +64,6 @@ connection.query('SELECT v.VhclID, v.BsnsInfoID, b.BsnsName, m.UserInfoID, v.Mak
               OldId: row.VhclID,
               ClientId: null,
               ClientName: row.BsnsName,
-              Users: [],
               Make: row.Make,
               Model: row.Modl,
               ModelYear: row.ModlYear,
@@ -84,6 +83,8 @@ connection.query('SELECT v.VhclID, v.BsnsInfoID, b.BsnsName, m.UserInfoID, v.Mak
                 if (err) throw err;
 
                 if (user) {
+                  if (!doc.Users) doc.Users = [];
+                  
                   doc.Users.push({
                     id: user._id.toString(),
                     loginId: user.LoginId,
