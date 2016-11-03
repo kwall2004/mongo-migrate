@@ -12,7 +12,7 @@ var connection = mysql.createConnection({
 
 connection.connect();
 
-connection.query('SELECT v.VhclID, v.BsnsInfoID, b.BsnsName, m.UserInfoID, v.Make, v.Modl, v.ModlYear, v.Alas, v.InitOdo ' +
+connection.query('SELECT v.VhclID, v.BsnsInfoID, b.BsnsName, m.UserInfoID, v.Make, v.Modl, v.ModlYear, v.Alas, v.InitOdo, v.VIN ' +
   'FROM Vhcl v ' +
   'LEFT JOIN UserVhclDvceMap m ON m.VhclID = v.VhclID AND (m.EndDate IS NULL OR m.EndDate > NOW()) ' +
   'LEFT JOIN BsnsInfo b ON b.BsnsInfoID = v.BsnsInfoID', function (err, rows, fields) {
@@ -69,7 +69,8 @@ connection.query('SELECT v.VhclID, v.BsnsInfoID, b.BsnsName, m.UserInfoID, v.Mak
               Model: row.Modl,
               ModelYear: row.ModlYear,
               Alias: row.Alas,
-              Odometer: row.InitOdo
+              Odometer: row.InitOdo,
+              VIN: row.VIN
             };
 
             clients.findOne({ OldId: row.BsnsInfoID }, function (err, client) {
