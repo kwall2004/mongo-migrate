@@ -1,5 +1,8 @@
 var mysql = require('mysql');
 var MongoClient = require('mongodb').MongoClient;
+var ObjectID = require('mongodb').ObjectID;
+var Promise = require('bluebird');
+
 // var uri = 'mongodb://localhost:27017/vision2';
 var uri = 'mongodb://heroku_9d3ppsr0:a706flgp82q7qenmd166qmvq8d@ds051655.mlab.com:51655/heroku_9d3ppsr0';
 
@@ -16,40 +19,38 @@ connection.query('SELECT BsnsInfoID, BsnsName, Adrs1, Adrs2, City, Stat, Ctry, Z
   'FROM BsnsInfo', function (err, rows, fields) {
     if (err) throw err;
 
-    MongoClient.connect(uri, function (err, db) {
-      if (err) throw err;
-
+    MongoClient.connect(uri).then(function (db) {
       var clients = db.collection('clients');
 
-      function processRow(rows, i) {
-        if (i == rows.length) {
-          console.log('done');
-          return;
-        }
-
-        var row = rows[i];
-
+      Promise.each(rows, function (row) {
         var doc = {
-          OldId: row.BsnsInfoID,
-          Name: row.BsnsName,
-          Address1: row.Adrs1,
-          Address2: row.Adrs2,
-          City: row.City,
-          State: row.Stat,
-          Country: row.Ctry,
-          Zip: row.Zip,
-          Phone: row.Phone
+          oldId: row.BsnsInfoID,
+          name: row.BsnsName,
+          address1: row.Adrs1,
+          address2: row.Adrs2,
+          city: row.City,
+          state: row.Stat,
+          country: row.Ctry,
+          zip: row.Zip,
+          phone: row.Phone
         };
 
-        clients.insertOne(doc, function (err, result) {
-          if (err) throw err;
+        return clients.insertOne(doc).then(function (result) {
+          console.log(row.BsnsInfoID, result.result);
 
-          console.log(i, result.result);
-
-          processRow(rows, i + 1);
+        }).catch(function (err) {
+          throw err;
         });
-      }
 
-      processRow(rows, 0);
+      }).then(function (rows) {
+        console.log('done');
+        return;
+
+      }).catch(function (err) {
+        throw err;
+      });
+
+    }).catch(function (err) {
+      throw err;
     });
   });

@@ -1,5 +1,8 @@
 var mysql = require('mysql');
 var MongoClient = require('mongodb').MongoClient;
+var ObjectID = require('mongodb').ObjectID;
+var Promise = require('bluebird');
+
 // var uri = 'mongodb://localhost:27017/vision2';
 var uri = 'mongodb://heroku_9d3ppsr0:a706flgp82q7qenmd166qmvq8d@ds051655.mlab.com:51655/heroku_9d3ppsr0';
 
@@ -12,53 +15,95 @@ var connection = mysql.createConnection({
 
 connection.connect();
 
-connection.query('SELECT d.DvceID, d.BsnsInfoID, bi.BsnsName, d.IMEI, d.GrupID, d.FWVrsn, d.ConfVrsn, d.SrlNum ' +
+connection.query('SELECT d.DvceID, d.BsnsInfoID, d.IMEI, d.GrupID, d.FWVrsn, d.ConfVrsn, d.SrlNum, m.VhclID, unix_timestamp(m.StrtDate) AS StrtDate, unix_timestamp(m.EndDate) AS EndDate ' +
   'FROM Dvce d ' +
-  'LEFT JOIN BsnsInfo bi ON bi.BsnsInfoID = d.BsnsInfoID', function (err, rows, fields) {
+  'LEFT JOIN UserVhclDvceMap m ON m.DvceID = d.DvceID ', function (err, rows, fields) {
     if (err) throw err;
 
-    MongoClient.connect(uri, function (err, db) {
-      if (err) throw err;
-
+    MongoClient.connect(uri).then(function (db) {
       var clients = db.collection('clients');
+      var vehicles = db.collection('vehicles');
       var devices = db.collection('devices');
 
-      function processRow(rows, i) {
-        if (i == rows.length) {
-          console.log('done');
-          return;
-        }
+      Promise.each(rows, function (row) {
+        return devices.findOne({ oldId: parseInt(row.DvceID) }).then(function (device) {
+          if (device) {
+            return vehicles.findOne({ oldId: parseInt(row.VhclID) }).then(function (vehicle) {
+              if (vehicle) {
+                return devices.updateOne({ _id: device._id }, {
+                  $push: {
+                    vehicles: {
+                      id: ObjectID(vehicle._id),
+                      startDate: new Date(row.StrtDate * 1000),
+                      endDate: row.EndDate ? new Date(row.EndDate * 1000) : null
+                    }
+                  }
 
-        var row = rows[i];
+                }).then(function (result) {
+                  console.log(row.DvceID, result.result);
 
-        var doc = {
-          OldId: row.DvceID,
-          ClientId: null,
-          ClientName: row.BsnsName,
-          IMEI: row.IMEI.toString(),
-          GroupId: parseInt(row.GrupID),
-          FirmwareVersion: row.FWVrsn,
-          ConfigVersion: row.ConfVrsn,
-          SerialNumber: row.SrlNum ? row.SrlNum.toString() : null
-        };
+                }).catch(function (err) {
+                  throw err;
+                })
+              }
+            });
+          }
+          else {
+            var doc = {
+              oldId: row.DvceID,
+              clientId: null,
+              imei: row.IMEI.toString(),
+              groupId: parseInt(row.GrupID),
+              firmwareVersion: row.FWVrsn,
+              configVersion: row.ConfVrsn,
+              serialNumber: row.SrlNum ? row.SrlNum.toString() : null
+            };
 
-        clients.findOne({ OldId: row.BsnsInfoID }, function (err, client) {
-          if (err) throw err;
+            return clients.findOne({ oldId: parseInt(row.BsnsInfoID) }).then(function (client) {
+              if (client) {
+                doc.clientId = ObjectID(client._id);
+              }
 
-          if (client) {
-            doc.ClientId = client._id.toString();
+              return vehicles.findOne({ oldId: parseInt(row.VhclID) }).then(function (vehicle) {
+                if (vehicle) {
+                  if (!doc.vehicles) doc.vehicles = [];
+
+                  doc.vehicles.push({
+                    id: ObjectID(vehicle._id),
+                    startDate: new Date(row.StrtDate * 1000),
+                    endDate: row.EndDate ? new Date(row.EndDate * 1000) : null
+                  });
+                }
+
+                return devices.insertOne(doc).then(function (result) {
+                  console.log(row.DvceID, result.result);
+
+                }).catch(function (err) {
+                  throw err;
+                });
+
+              }).catch(function (err) {
+                throw err;
+              });
+
+            }).catch(function (err) {
+              throw err;
+            });
           }
 
-          devices.insertOne(doc, function (err, result) {
-            if (err) throw err;
-
-            console.log(i, result.result);
-
-            processRow(rows, i + 1);
-          });
+        }).catch(function (err) {
+          throw err;
         });
-      }
 
-      processRow(rows, 0);
+      }).then(function (result) {
+        console.log('done');
+        return;
+
+      }).catch(function (err) {
+        throw err;
+      });
+
+    }).catch(function (err) {
+      throw err;
     });
   });

@@ -1,5 +1,8 @@
 var mysql = require('mysql');
 var MongoClient = require('mongodb').MongoClient;
+var ObjectID = require('mongodb').ObjectID;
+var Promise = require('bluebird');
+
 // var uri = 'mongodb://localhost:27017/vision2';
 var uri = 'mongodb://heroku_9d3ppsr0:a706flgp82q7qenmd166qmvq8d@ds051655.mlab.com:51655/heroku_9d3ppsr0';
 
@@ -12,99 +15,51 @@ var connection = mysql.createConnection({
 
 connection.connect();
 
-connection.query('SELECT v.VhclID, v.BsnsInfoID, b.BsnsName, m.UserInfoID, v.Make, v.Modl, v.ModlYear, v.Alas, v.InitOdo, v.VIN ' +
-  'FROM Vhcl v ' +
-  'LEFT JOIN UserVhclDvceMap m ON m.VhclID = v.VhclID AND (m.EndDate IS NULL OR m.EndDate > NOW()) ' +
-  'LEFT JOIN BsnsInfo b ON b.BsnsInfoID = v.BsnsInfoID', function (err, rows, fields) {
+connection.query('SELECT v.VhclID, v.BsnsInfoID, v.Make, v.Modl, v.ModlYear, v.Alas, v.InitOdo, v.VIN ' +
+  'FROM Vhcl v ', function (err, rows, fields) {
     if (err) throw err;
 
-    MongoClient.connect(uri, function (err, db) {
-      if (err) throw err;
-
+    MongoClient.connect(uri).then(function (db) {
       var clients = db.collection('clients');
-      var users = db.collection('users');
       var vehicles = db.collection('vehicles');
 
-      function processRow(rows, i) {
-        if (i == rows.length) {
-          console.log('done');
-          return;
-        }
+      Promise.each(rows, function (row) {
+        var doc = {
+          oldId: row.VhclID,
+          clientId: null,
+          make: row.Make,
+          model: row.Modl,
+          modelYear: row.ModlYear,
+          alias: row.Alas,
+          odometer: row.InitOdo,
+          vin: row.VIN
+        };
 
-        var row = rows[i];
-
-        vehicles.findOne({ OldId: row.VhclID }, function (err, vehicle) {
-          if (err) throw err;
-
-          if (vehicle) {
-            users.findOne({ OldId: row.UserInfoID }, function (err, user) {
-              if (err) throw err;
-
-              if (user) {
-                vehicles.updateOne({ _id: vehicle._id }, {
-                  $push: {
-                    Users: {
-                      id: user._id.toString(),
-                      loginId: user.LoginId,
-                      userName: user.UserName
-                    }
-                  }
-                }, function (err, result) {
-                  if (err) throw err;
-
-                  console.log(i, result.result);
-
-                  processRow(rows, i + 1);
-                });
-              }
-            });
+        return clients.findOne({ oldId: parseInt(row.BsnsInfoID) }).then(function (client) {
+          if (client) {
+            doc.clientId = ObjectID(client._id);
           }
-          else {
-            var doc = {
-              OldId: row.VhclID,
-              ClientId: null,
-              ClientName: row.BsnsName,
-              Make: row.Make,
-              Model: row.Modl,
-              ModelYear: row.ModlYear,
-              Alias: row.Alas,
-              Odometer: row.InitOdo,
-              VIN: row.VIN
-            };
 
-            clients.findOne({ OldId: row.BsnsInfoID }, function (err, client) {
-              if (err) throw err;
+          return vehicles.insertOne(doc).then(function (result) {
+            console.log(row.VhclID, result.result);
 
-              if (client) {
-                doc.ClientId = client._id.toString();
-              }
+          }).catch(function (err) {
+            throw err;
+          });
 
-              users.findOne({ OldId: row.UserInfoID }, function (err, user) {
-                if (err) throw err;
-
-                if (user) {
-                  if (!doc.Users) doc.Users = [];
-                  
-                  doc.Users.push({
-                    id: user._id.toString(),
-                    loginId: user.LoginId,
-                    userName: user.UserName
-                  });
-                }
-
-                vehicles.insertOne(doc, function (err, result) {
-                  if (err) throw err;
-
-                  console.log(i, result.result);
-
-                  processRow(rows, i + 1);
-                });
-              });
-            });
-          }
+        }).catch(function (err) {
+          throw err;
         });
-      }
 
-      processRow(rows, 0);
+      }).then(function (result) {
+        console.log('done');
+        return;
+
+      }).catch(function (err) {
+        throw err;
+      });
+
+    }).catch(function (err) {
+      throw err;
     });
   });
