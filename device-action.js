@@ -1,5 +1,8 @@
 var mysql = require('mysql');
 var MongoClient = require('mongodb').MongoClient;
+var ObjectID = require('mongodb').ObjectID;
+var Promise = require('bluebird');
+
 // var uri = 'mongodb://localhost:27017/vision2';
 var uri = 'mongodb://heroku_9d3ppsr0:a706flgp82q7qenmd166qmvq8d@ds051655.mlab.com:51655/heroku_9d3ppsr0';
 
@@ -16,39 +19,34 @@ connection.query('SELECT DvceActnStngID, GrupID, LogrEvnt, Indx, Actn, Arg1, Arg
   'FROM DvceActnStng', function (err, rows, fields) {
     if (err) throw err;
 
-    MongoClient.connect(uri, function (err, db) {
-      if (err) throw err;
-
+    MongoClient.connect(uri).then(function (db) {
       var deviceActions = db.collection('device-actions');
 
-      function processRow(rows, i) {
-        if (i == rows.length) {
-          console.log('done');
-          return;
-        }
-
-        var row = rows[i];
-
+      Promise.each(rows, function (row) {
         var doc = {
-          OldId: row.DvceActnStngID,
-          GroupId: row.GrupID,
-          LogEvent: row.LogrEvnt,
-          Index: row.Indx,
-          Action: row.Actn,
-          Arg1: row.Arg1,
-          Arg2: row.Arg2,
-          Arg3: row.Arg3
+          oldId: row.DvceActnStngID,
+          groupId: row.GrupID,
+          logEvent: row.LogrEvnt,
+          index: row.Indx,
+          action: row.Actn,
+          arg1: row.Arg1,
+          arg2: row.Arg2,
+          arg3: row.Arg3
         };
 
-        deviceActions.insertOne(doc, function (err, result) {
-          if (err) throw err;
+        return deviceActions.insertOne(doc).then(function (result) {
+          console.log(row.DvceActnStngID, result.result);
 
-          console.log(i, result.result);
-
-          processRow(rows, i + 1);
+        }).catch(function (err) {
+          throw err;
         });
-      }
 
-      processRow(rows, 0);
+      }).then(function (result) {
+        console.log('done');
+        return;
+
+      }).catch(function (err) {
+        throw err;
+      });
     });
   });

@@ -1,5 +1,8 @@
 var mysql = require('mysql');
 var MongoClient = require('mongodb').MongoClient;
+var ObjectID = require('mongodb').ObjectID;
+var Promise = require('bluebird');
+
 // var uri = 'mongodb://localhost:27017/vision2';
 var uri = 'mongodb://heroku_9d3ppsr0:a706flgp82q7qenmd166qmvq8d@ds051655.mlab.com:51655/heroku_9d3ppsr0';
 
@@ -18,69 +21,65 @@ connection.query('SELECT us.UserSettingId, au.UserInfoId, t.Type, us.Key, us.Val
   'LEFT JOIN UserSettingTypes t ON t.UserSettingTypeId = us.UserSettingTypeId', function (err, rows, fields) {
     if (err) throw err;
 
-    MongoClient.connect(uri, function (err, db) {
-      if (err) throw err;
-
+    MongoClient.connect(uri).then(function (db) {
       var users = db.collection('users');
       var vehicles = db.collection('vehicles');
       var settings = db.collection('user-settings');
 
-      function processRow(rows, i) {
-        if (i == rows.length) {
-          console.log('done');
-          return;
-        }
-
-        var row = rows[i];
-
+      Promise.each(rows, function (row) {
         var doc = {
-          OldId: row.UserSettingId,
-          UserId: null,
-          Key: row.Key,
-          Value: row.Value
+          oldId: row.UserSettingId,
+          userId: null,
+          key: row.Key,
+          value: row.Value
         };
 
-        users.findOne({ OldId: row.UserInfoId }, function (err, user) {
-          if (err) throw err;
-
+        return users.findOne({ oldId: row.UserInfoId }).then(function (user) {
           if (user) {
-            doc.UserId = user._id.toString();
+            doc.userId = ObjectID(user._id);
           }
 
           if (!isNaN(row.Key)) {
-            vehicles.findOne({ OldId: parseInt(row.Key) }, function (err, vehicle) {
-              if (err) throw err;
-
+            return vehicles.findOne({ oldId: parseInt(row.Key) }).then(function (vehicle) {
               if (vehicle) {
-                doc.Key = row.Type;
-                doc.VehicleId = vehicle._id.toString();
+                doc.key = row.Type;
+                doc.vehicleId = ObjectID(vehicle._id);
               }
 
-              settings.insertOne(doc, function (err, result) {
-                if (err) throw err;
+              return settings.insertOne(doc).then(function (result) {
+                console.log(row.UserSettingId, result.result);
 
-                console.log(i, result.result);
-
-                processRow(rows, i + 1);
+              }).catch(function (err) {
+                throw err;
               });
+
+            }).catch(function (err) {
+              throw err;
             });
           }
           else {
             if (row.Key.startsWith('Default')) {
-              doc.Key = row.Key.replace('Default', '');
+              doc.key = row.Key.replace('Default', '');
             }
 
-            settings.insertOne(doc, function (err, result) {
-              if (err) throw err;
+            return settings.insertOne(doc).then(function (result) {
+              console.log(row.UserSettingId, result.result);
 
-              console.log(i, result.result);
-
-              processRow(rows, i + 1);
+            }).catch(function (err) {
+              throw err;
             });
           }
-        });
-      }
 
-      processRow(rows, 0);
+        }).catch(function (err) {
+          throw err;
+        });
+
+      }).then(function (result) {
+        console.log('done');
+        return;
+
+      }).catch(function (err) {
+        throw err;
+      });
     });
   });
