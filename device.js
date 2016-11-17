@@ -18,23 +18,23 @@ connection.connect();
 connection.query('SELECT d.DvceID, d.IMEI, d.GrupID, d.FWVrsn, d.ConfVrsn, d.SrlNum, ui.BsnsInfoID, m.VhclID, unix_timestamp(m.StrtDate) AS StrtDate, unix_timestamp(m.EndDate) AS EndDate ' +
   'FROM Dvce d ' +
   'LEFT JOIN UserVhclDvceMap m ON m.DvceID = d.DvceID ' +
-  'LEFT JOIN UserInfo ui ON ui.UserInfoID = m.UserInfoID ', function (err, rows, fields) {
+  'LEFT JOIN UserInfo ui ON ui.UserInfoID = m.UserInfoID ', function (err, rows) {
     if (err) throw err;
 
     MongoClient.connect(uri)
       .then(function (db) {
-        var clients = db.collection('clients');
-        var vehicles = db.collection('vehicles');
-        var devices = db.collection('devices');
+        var clientsCollection = db.collection('clients');
+        var vehiclesCollection = db.collection('vehicles');
+        var devicesCollection = db.collection('devices');
 
         return Promise
           .each(rows, function (row, index) {
-            return devices
+            return devicesCollection
               .findOne({ oldId: parseInt(row.DvceID) })
 
               .then(function (device) {
                 if (device) {
-                  return clients
+                  return clientsCollection
                     .findOne({ oldId: parseInt(row.BsnsInfoID) })
 
                     .then(function (client) {
@@ -43,19 +43,19 @@ connection.query('SELECT d.DvceID, d.IMEI, d.GrupID, d.FWVrsn, d.ConfVrsn, d.Srl
                           if (device.currentClient) {
                             var startDate = new Date(row.StrtDate * 1000);
                             if (startDate > device.currentClient.startDate) {
-                              return devices
+                              return devicesCollection
                                 .updateOne({ _id: device._id }, {
                                   $push: {
                                     previousClients: {
                                       id: device.currentClient.id,
                                       startDate: device.currentClient.startDate,
-                                      endDate: device.currentClient.endDate
+                                      endDate: startDate
                                     }
                                   }
                                 })
 
                                 .then(function () {
-                                  return devices.updateOne({ _id: device._id }, {
+                                  return devicesCollection.updateOne({ _id: device._id }, {
                                     $set: {
                                       currentClient: {
                                         id: ObjectID(client._id),
@@ -66,29 +66,30 @@ connection.query('SELECT d.DvceID, d.IMEI, d.GrupID, d.FWVrsn, d.ConfVrsn, d.Srl
                                 });
                             }
                             else {
-                              return devices.updateOne({ _id: device._id }, {
+                              return devicesCollection.updateOne({ _id: device._id }, {
                                 $push: {
                                   previousClients: {
                                     id: ObjectID(client._id),
-                                    startDate: new Date(row.StrtDate * 1000),
-                                    endDate: new Date(row.EndDate * 1000)
+                                    startDate: startDate,
+                                    endDate: device.currentClient.startDate
                                   }
                                 }
                               });
                             }
                           }
-
-                          return devices.updateOne({ _id: device._id }, {
-                            $set: {
-                              currentClient: {
-                                id: ObjectID(client._id),
-                                startDate: new Date(row.StrtDate * 1000)
+                          else {
+                            return devicesCollection.updateOne({ _id: device._id }, {
+                              $set: {
+                                currentClient: {
+                                  id: ObjectID(client._id),
+                                  startDate: startDate
+                                }
                               }
-                            }
-                          });
+                            });
+                          }
                         }
                         else {
-                          return devices.updateOne({ _id: device._id }, {
+                          return devicesCollection.updateOne({ _id: device._id }, {
                             $push: {
                               previousClients: {
                                 id: ObjectID(client._id),
@@ -102,66 +103,133 @@ connection.query('SELECT d.DvceID, d.IMEI, d.GrupID, d.FWVrsn, d.ConfVrsn, d.Srl
                     })
 
                     .then(function () {
-                      return vehicles.findOne({ oldId: parseInt(row.VhclID) });
+                      return vehiclesCollection.findOne({ oldId: parseInt(row.VhclID) });
                     })
 
                     .then(function (vehicle) {
                       if (vehicle) {
                         if (!row.EndDate) {
-                          if (device.currentVehicle) {
-                            var startDate = new Date(row.StrtDate * 1000);
-                            if (startDate > device.currentVehicle.startDate) {
-                              return devices
-                                .updateOne({ _id: device._id }, {
-                                  $push: {
-                                    previousVehicles: {
-                                      id: device.currentVehicle.id,
-                                      startDate: device.currentVehicle.startDate,
-                                      endDate: device.currentVehicle.endDate
-                                    }
-                                  }
-                                })
+                          var startDate = new Date(row.StrtDate * 1000);
+                          var endDate = null;
 
-                                .then(function () {
-                                  return devices.updateOne({ _id: device._id }, {
-                                    $set: {
-                                      currentVehicle: {
-                                        id: ObjectID(vehicle._id),
-                                        startDate: startDate
+                          return new Promise(function (resolve, reject) {
+                            devicesCollection
+                              .find({ 'currentVehicle.id': vehicle._id, _id: { $ne: device._id } })
+
+                              .toArray(function (err, devices) {
+                                if (err) reject(err);
+
+                                Promise
+                                  .each(devices, function (d) {
+                                    if (startDate >= d.currentVehicle.startDate) {
+                                      return devicesCollection
+                                        .updateOne({ _id: d._id }, {
+                                          $push: {
+                                            previousVehicles: {
+                                              id: d.currentVehicle.id,
+                                              startDate: d.currentVehicle.startDate,
+                                              endDate: startDate
+                                            }
+                                          }
+                                        })
+
+                                        .then(function () {
+                                          return devicesCollection.updateOne({ _id: d._id }, {
+                                            $set: {
+                                              vehicleAlias: null
+                                            },
+                                            $unset: {
+                                              currentVehicle: ''
+                                            }
+                                          });
+                                        });
+                                    }
+                                    else {
+                                      endDate = d.currentVehicle.startDate;
+                                    }
+                                  })
+
+                                  .then(function () {
+                                    if (!endDate) {
+                                      if (device.currentVehicle) {
+                                        if (startDate >= device.currentVehicle.startDate) {
+                                          return devicesCollection
+                                            .updateOne({ _id: device._id }, {
+                                              $push: {
+                                                previousVehicles: {
+                                                  id: device.currentVehicle.id,
+                                                  startDate: device.currentVehicle.startDate,
+                                                  endDate: startDate
+                                                }
+                                              }
+                                            })
+
+                                            .then(function () {
+                                              return devicesCollection.updateOne({ _id: device._id }, {
+                                                $set: {
+                                                  vehicleAlias: vehicle.alias,
+                                                  currentVehicle: {
+                                                    id: ObjectID(vehicle._id),
+                                                    startDate: startDate
+                                                  }
+                                                }
+                                              });
+                                            });
+                                        }
+                                        else {
+                                          return devicesCollection.updateOne({ _id: device._id }, {
+                                            $push: {
+                                              previousVehicles: {
+                                                id: ObjectID(vehicle._id),
+                                                startDate: startDate,
+                                                endDate: device.currentVehicle.startDate
+                                              }
+                                            }
+                                          });
+                                        }
+                                      }
+                                      else {
+                                        return devicesCollection.updateOne({ _id: device._id }, {
+                                          $set: {
+                                            vehicleAlias: vehicle.alias,
+                                            currentVehicle: {
+                                              id: ObjectID(vehicle._id),
+                                              startDate: startDate
+                                            }
+                                          }
+                                        });
                                       }
                                     }
-                                  });
-                                });
-                            }
-                            else {
-                              return devices.updateOne({ _id: device._id }, {
-                                $push: {
-                                  previousVehicles: {
-                                    id: ObjectID(vehicle._id),
-                                    startDate: new Date(row.StrtDate * 1000),
-                                    endDate: new Date(row.EndDate * 1000)
-                                  }
-                                }
-                              });
-                            }
-                          }
+                                    else {
+                                      return devicesCollection.updateOne({ _id: device._id }, {
+                                        $push: {
+                                          previousVehicles: {
+                                            id: ObjectID(vehicle._id),
+                                            startDate: new Date(row.StrtDate * 1000),
+                                            endDate: endDate
+                                          }
+                                        }
+                                      });
+                                    }
+                                  })
 
-                          return devices.updateOne({ _id: device._id }, {
-                            $set: {
-                              currentVehicle: {
-                                id: ObjectID(vehicle._id),
-                                startDate: new Date(row.StrtDate * 1000)
-                              }
-                            }
+                                  .then(function () {
+                                    resolve();
+                                  })
+
+                                  .catch(function (err) {
+                                    reject(err);
+                                  });
+                              });
                           });
                         }
                         else {
-                          return devices.updateOne({ _id: device._id }, {
+                          return devicesCollection.updateOne({ _id: device._id }, {
                             $push: {
                               previousVehicles: {
                                 id: ObjectID(vehicle._id),
                                 startDate: new Date(row.StrtDate * 1000),
-                                endDate: row.EndDate ? new Date(row.EndDate * 1000) : null
+                                endDate: new Date(row.EndDate * 1000)
                               }
                             }
                           });
@@ -177,10 +245,11 @@ connection.query('SELECT d.DvceID, d.IMEI, d.GrupID, d.FWVrsn, d.ConfVrsn, d.Srl
                     firmwareVersion: row.FWVrsn,
                     configVersion: row.ConfVrsn,
                     serialNumber: row.SrlNum ? row.SrlNum.toString() : null,
+                    vehicleAlias: null,
                     createdAt: new Date()
                   };
 
-                  return clients.findOne({ oldId: parseInt(row.BsnsInfoID) })
+                  return clientsCollection.findOne({ oldId: parseInt(row.BsnsInfoID) })
                     .then(function (client) {
                       if (client) {
                         if (!row.EndDate) {
@@ -195,21 +264,80 @@ connection.query('SELECT d.DvceID, d.IMEI, d.GrupID, d.FWVrsn, d.ConfVrsn, d.Srl
                           doc.previousClients.push({
                             id: ObjectID(client._id),
                             startDate: new Date(row.StrtDate * 1000),
-                            endDate: row.EndDate ? new Date(row.EndDate * 1000) : null
+                            endDate: new Date(row.EndDate * 1000)
                           });
                         }
                       }
 
-                      return vehicles.findOne({ oldId: parseInt(row.VhclID) })
+                      return vehiclesCollection.findOne({ oldId: parseInt(row.VhclID) })
                     })
 
                     .then(function (vehicle) {
                       if (vehicle) {
                         if (!row.EndDate) {
+                          var startDate = new Date(row.StrtDate * 1000);
+
+                          doc.vehicleAlias = vehicle.alias;
                           doc.currentVehicle = {
                             id: ObjectID(vehicle._id),
                             startDate: new Date(row.StrtDate * 1000)
-                          }
+                          };
+
+                          return new Promise(function (resolve, reject) {
+                            devicesCollection
+                              .find({ 'currentVehicle.id': vehicle._id })
+
+                              .toArray(function (err, devices) {
+                                if (err) reject(err);
+
+                                Promise
+                                  .each(devices, function (d) {
+                                    if (startDate >= d.currentVehicle.startDate) {
+                                      return devicesCollection
+                                        .updateOne({ _id: d._id }, {
+                                          $push: {
+                                            previousVehicles: {
+                                              id: d.currentVehicle.id,
+                                              startDate: d.currentVehicle.startDate,
+                                              endDate: startDate
+                                            }
+                                          }
+                                        })
+
+                                        .then(function () {
+                                          return devicesCollection.updateOne({ _id: d._id }, {
+                                            $set: {
+                                              vehicleAlias: null
+                                            },
+                                            $unset: {
+                                              currentVehicle: ''
+                                            }
+                                          });
+                                        });
+                                    }
+                                    else {
+                                      doc.vehicleAlias = null;
+                                      delete doc.currentVehicle;
+
+                                      if (!doc.previousVehicles) doc.previousVehicles = [];
+
+                                      doc.previousVehicles.push({
+                                        id: ObjectID(vehicle._id),
+                                        startDate: new Date(row.StrtDate * 1000),
+                                        endDate: d.currentVehicle.startDate
+                                      });
+                                    }
+                                  })
+
+                                  .then(function () {
+                                    resolve();
+                                  })
+
+                                  .catch(function (err) {
+                                    reject(err);
+                                  });
+                              });
+                          });
                         }
                         else {
                           if (!doc.previousVehicles) doc.previousVehicles = [];
@@ -217,22 +345,24 @@ connection.query('SELECT d.DvceID, d.IMEI, d.GrupID, d.FWVrsn, d.ConfVrsn, d.Srl
                           doc.previousVehicles.push({
                             id: ObjectID(vehicle._id),
                             startDate: new Date(row.StrtDate * 1000),
-                            endDate: row.EndDate ? new Date(row.EndDate * 1000) : null
+                            endDate: new Date(row.EndDate * 1000)
                           });
                         }
                       }
+                    })
 
-                      return devices.insertOne(doc)
+                    .then(function () {
+                      return devicesCollection.insertOne(doc);
                     });
                 }
               })
 
-              .then(function (result) {
-                console.log(index, result.result);
+              .then(function () {
+                console.log(index);
               });
           })
 
-          .then(function (result) {
+          .then(function () {
             console.log('done');
             return;
           })

@@ -15,43 +15,19 @@ var connection = mysql.createConnection({
 
 connection.connect();
 
-connection.query('SELECT u.UserInfoID, u.BsnsInfoID, u.LognID, u.UserName, u.Email, m.DvceID, unix_timestamp(m.StrtDate) AS StrtDate, unix_timestamp(m.EndDate) AS EndDate ' +
-  'FROM UserInfo u ' +
-  'LEFT JOIN UserVhclDvceMap m ON m.UserInfoID = u.UserInfoID ', function (err, rows, fields) {
+connection.query('SELECT u.UserInfoID, u.BsnsInfoID, u.LognID, u.UserName, u.Email ' +
+  'FROM UserInfo u ', function (err, rows) {
     if (err) throw err;
 
-    MongoClient.connect(uri).then(function (db) {
-      var clients = db.collection('clients');
-      var devices = db.collection('devices');
-      var users = db.collection('users');
+    MongoClient
+      .connect(uri)
 
-      Promise.each(rows, function (row) {
-        return users.findOne({ oldId: parseInt(row.UserInfoID) }).then(function (user) {
-          if (user) {
-            return devices.findOne({ oldId: parseInt(row.DvceID) }).then(function (device) {
-              if (device) {
-                return users.updateOne({ _id: user._id }, {
-                  $push: {
-                    devices: {
-                      id: ObjectID(device._id),
-                      startDate: new Date(row.StrtDate * 1000),
-                      endDate: row.EndDate ? new Date(row.EndDate * 1000) : null
-                    }
-                  }
+      .then(function (db) {
+        var clients = db.collection('clients');
+        var users = db.collection('users');
 
-                }).then(function (result) {
-                  console.log(row.UserInfoID, result.result);
-
-                }).catch(function (err) {
-                  throw err;
-                });
-              }
-
-            }).catch(function (err) {
-              throw err;
-            });
-          }
-          else {
+        return Promise
+          .each(rows, function (row, index) {
             var doc = {
               oldId: row.UserInfoID,
               clientId: null,
@@ -65,45 +41,19 @@ connection.query('SELECT u.UserInfoID, u.BsnsInfoID, u.LognID, u.UserName, u.Ema
                 doc.clientId = ObjectID(client._id);
               }
 
-              return devices.findOne({ oldId: parseInt(row.DvceID) }).then(function (device) {
-                if (device) {
-                  doc.devices = [];
-                  doc.devices.push({
-                    id: ObjectID(device._id),
-                    startDate: new Date(row.StrtDate * 1000),
-                    endDate: row.EndDate ? new Date(row.EndDate * 1000) : null
-                  });
-                }
-
-                return users.insertOne(doc).then(function (result) {
-                  console.log(row.UserInfoID, result.result);
-
-                }).catch(function (err) {
-                  throw err;
-                });
-
-              }).catch(function (err) {
-                throw err;
+              return users.insertOne(doc).then(function (result) {
+                console.log(index, result.result);
               });
-
-            }).catch(function (err) {
-              throw err;
             });
-          }
+          })
 
-        }).catch(function (err) {
-          throw err;
-        });
+          .then(function () {
+            db.close();
+            console.log('done');
+          });
+      })
 
-      }).then(function (result) {
-        console.log('done');
-        return;
-
-      }).catch(function (err) {
+      .catch(function (err) {
         throw err;
       });
-
-    }).catch(function (err) {
-      throw err;
-    });
   });

@@ -1,6 +1,5 @@
 var mysql = require('mysql');
 var MongoClient = require('mongodb').MongoClient;
-var ObjectID = require('mongodb').ObjectID;
 var Promise = require('bluebird');
 
 // var uri = 'mongodb://localhost:27017/vision2';
@@ -16,7 +15,7 @@ var connection = mysql.createConnection({
 connection.connect();
 
 connection.query('SELECT DvceActnStngID, GrupID, LogrEvnt, Indx, Actn, Arg1, Arg2, Arg3 ' +
-  'FROM DvceActnStng', function (err, rows, fields) {
+  'FROM DvceActnStng', function (err, rows) {
     if (err) throw err;
 
     MongoClient.connect(uri).then(function (db) {
@@ -41,7 +40,7 @@ connection.query('SELECT DvceActnStngID, GrupID, LogrEvnt, Indx, Actn, Arg1, Arg
           throw err;
         });
 
-      }).then(function (result) {
+      }).then(function () {
         console.log('done');
         return;
 

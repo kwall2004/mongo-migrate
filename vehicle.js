@@ -19,47 +19,47 @@ connection.query('SELECT v.VhclID, v.BsnsInfoID, v.Make, v.Modl, v.ModlYear, v.A
   'FROM Vhcl v ', function (err, rows, fields) {
     if (err) throw err;
 
-    MongoClient.connect(uri).then(function (db) {
-      var clients = db.collection('clients');
-      var vehicles = db.collection('vehicles');
+    MongoClient
+      .connect(uri)
 
-      Promise.each(rows, function (row) {
-        var doc = {
-          oldId: row.VhclID,
-          clientId: null,
-          make: row.Make,
-          model: row.Modl,
-          modelYear: row.ModlYear,
-          alias: row.Alas,
-          odometer: row.InitOdo,
-          vin: row.VIN
-        };
+      .then(function (db) {
+        var clients = db.collection('clients');
+        var vehicles = db.collection('vehicles');
 
-        return clients.findOne({ oldId: parseInt(row.BsnsInfoID) }).then(function (client) {
-          if (client) {
-            doc.clientId = ObjectID(client._id);
-          }
+        return Promise
+          .each(rows, function (row, index) {
+            var doc = {
+              oldId: row.VhclID,
+              clientId: null,
+              make: row.Make,
+              model: row.Modl,
+              modelYear: row.ModlYear,
+              alias: row.Alas,
+              odometer: row.InitOdo,
+              vin: row.VIN
+            };
 
-          return vehicles.insertOne(doc).then(function (result) {
-            console.log(row.VhclID, result.result);
+            return clients
+              .findOne({ oldId: parseInt(row.BsnsInfoID) })
 
-          }).catch(function (err) {
-            throw err;
+              .then(function (client) {
+                if (client) {
+                  doc.clientId = ObjectID(client._id);
+                }
+
+                return vehicles.insertOne(doc).then(function (result) {
+                  console.log(index, result.result);
+                });
+              });
+          })
+
+          .then(function () {
+            db.close();
+            console.log('done');
           });
+      })
 
-        }).catch(function (err) {
-          throw err;
-        });
-
-      }).then(function (result) {
-        console.log('done');
-        return;
-
-      }).catch(function (err) {
+      .catch(function (err) {
         throw err;
       });
-
-    }).catch(function (err) {
-      throw err;
-    });
   });

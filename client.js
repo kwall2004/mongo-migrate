@@ -19,38 +19,37 @@ connection.query('SELECT BsnsInfoID, BsnsName, Adrs1, Adrs2, City, Stat, Ctry, Z
   'FROM BsnsInfo', function (err, rows, fields) {
     if (err) throw err;
 
-    MongoClient.connect(uri).then(function (db) {
-      var clients = db.collection('clients');
+    MongoClient
+      .connect(uri)
 
-      Promise.each(rows, function (row) {
-        var doc = {
-          oldId: row.BsnsInfoID,
-          name: row.BsnsName,
-          address1: row.Adrs1,
-          address2: row.Adrs2,
-          city: row.City,
-          state: row.Stat,
-          country: row.Ctry,
-          zip: row.Zip,
-          phone: row.Phone
-        };
+      .then(function (db) {
+        var clients = db.collection('clients');
 
-        return clients.insertOne(doc).then(function (result) {
-          console.log(row.BsnsInfoID, result.result);
+        return Promise
+          .each(rows, function (row, index) {
+            var doc = {
+              oldId: row.BsnsInfoID,
+              name: row.BsnsName,
+              address1: row.Adrs1,
+              address2: row.Adrs2,
+              city: row.City,
+              state: row.Stat,
+              country: row.Ctry,
+              zip: row.Zip,
+              phone: row.Phone
+            };
 
-        }).catch(function (err) {
-          throw err;
-        });
+            return clients.insertOne(doc).then(function (result) {
+              console.log(index, result.result);
+            });
+          })
 
-      }).then(function (rows) {
-        console.log('done');
-        return;
+          .then(function (rows) {
+            console.log('done');
+            return;
+          });
 
       }).catch(function (err) {
         throw err;
       });
-
-    }).catch(function (err) {
-      throw err;
-    });
   });

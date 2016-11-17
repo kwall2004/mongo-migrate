@@ -18,68 +18,62 @@ connection.connect();
 connection.query('SELECT us.UserSettingId, au.UserInfoId, t.Type, us.Key, us.Value ' +
   'FROM UserSettings us ' +
   'LEFT JOIN AspNetUsers au ON au.Id = us.UserId ' +
-  'LEFT JOIN UserSettingTypes t ON t.UserSettingTypeId = us.UserSettingTypeId', function (err, rows, fields) {
+  'LEFT JOIN UserSettingTypes t ON t.UserSettingTypeId = us.UserSettingTypeId', function (err, rows) {
     if (err) throw err;
 
-    MongoClient.connect(uri).then(function (db) {
-      var users = db.collection('users');
-      var vehicles = db.collection('vehicles');
-      var settings = db.collection('user-settings');
+    MongoClient
+      .connect(uri)
 
-      Promise.each(rows, function (row) {
-        var doc = {
-          oldId: row.UserSettingId,
-          userId: null,
-          key: row.Key,
-          value: row.Value
-        };
+      .then(function (db) {
+        var users = db.collection('users');
+        var vehicles = db.collection('vehicles');
+        var settings = db.collection('user-settings');
 
-        return users.findOne({ oldId: row.UserInfoId }).then(function (user) {
-          if (user) {
-            doc.userId = ObjectID(user._id);
-          }
+        return Promise
+          .each(rows, function (row, index) {
+            var doc = {
+              oldId: row.UserSettingId,
+              userId: null,
+              key: row.Key,
+              value: row.Value
+            };
 
-          if (!isNaN(row.Key)) {
-            return vehicles.findOne({ oldId: parseInt(row.Key) }).then(function (vehicle) {
-              if (vehicle) {
-                doc.key = row.Type;
-                doc.vehicleId = ObjectID(vehicle._id);
+            return users.findOne({ oldId: row.UserInfoId }).then(function (user) {
+              if (user) {
+                doc.userId = ObjectID(user._id);
               }
 
-              return settings.insertOne(doc).then(function (result) {
-                console.log(row.UserSettingId, result.result);
+              if (!isNaN(row.Key)) {
+                return vehicles.findOne({ oldId: parseInt(row.Key) }).then(function (vehicle) {
+                  if (vehicle) {
+                    doc.key = row.Type;
+                    doc.vehicleId = ObjectID(vehicle._id);
+                  }
 
-              }).catch(function (err) {
-                throw err;
-              });
+                  return settings.insertOne(doc).then(function (result) {
+                    console.log(index, result.result);
+                  });
+                });
+              }
+              else {
+                if (row.Key.startsWith('Default')) {
+                  doc.key = row.Key.replace('Default', '');
+                }
 
-            }).catch(function (err) {
-              throw err;
+                return settings.insertOne(doc).then(function (result) {
+                  console.log(index, result.result);
+                });
+              }
             });
-          }
-          else {
-            if (row.Key.startsWith('Default')) {
-              doc.key = row.Key.replace('Default', '');
-            }
+          })
 
-            return settings.insertOne(doc).then(function (result) {
-              console.log(row.UserSettingId, result.result);
+          .then(function () {
+            db.close();
+            console.log('done');
+          });
+      })
 
-            }).catch(function (err) {
-              throw err;
-            });
-          }
-
-        }).catch(function (err) {
-          throw err;
-        });
-
-      }).then(function (result) {
-        console.log('done');
-        return;
-
-      }).catch(function (err) {
+      .catch(function (err) {
         throw err;
       });
-    });
   });
