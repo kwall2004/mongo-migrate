@@ -135,10 +135,8 @@ connection.query('SELECT d.DvceID, d.IMEI, d.GrupID, d.FWVrsn, d.ConfVrsn, d.Srl
 
                                         .then(function () {
                                           return devicesCollection.updateOne({ _id: d._id }, {
-                                            $set: {
-                                              vehicleAlias: null
-                                            },
                                             $unset: {
+                                              vehicleAlias: '',
                                               currentVehicle: ''
                                             }
                                           });
@@ -245,7 +243,6 @@ connection.query('SELECT d.DvceID, d.IMEI, d.GrupID, d.FWVrsn, d.ConfVrsn, d.Srl
                     firmwareVersion: row.FWVrsn,
                     configVersion: row.ConfVrsn,
                     serialNumber: row.SrlNum ? row.SrlNum.toString() : null,
-                    vehicleAlias: null,
                     createdAt: new Date()
                   };
 
@@ -306,17 +303,15 @@ connection.query('SELECT d.DvceID, d.IMEI, d.GrupID, d.FWVrsn, d.ConfVrsn, d.Srl
 
                                         .then(function () {
                                           return devicesCollection.updateOne({ _id: d._id }, {
-                                            $set: {
-                                              vehicleAlias: null
-                                            },
                                             $unset: {
+                                              vehicleAlias: '',
                                               currentVehicle: ''
                                             }
                                           });
                                         });
                                     }
                                     else {
-                                      doc.vehicleAlias = null;
+                                      delete doc.vehicleAlias;
                                       delete doc.currentVehicle;
 
                                       if (!doc.previousVehicles) doc.previousVehicles = [];
