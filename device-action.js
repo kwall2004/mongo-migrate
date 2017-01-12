@@ -3,7 +3,7 @@ var MongoClient = require('mongodb').MongoClient;
 var Promise = require('bluebird');
 
 // var uri = 'mongodb://localhost:27017/vision2';
-var uri = 'mongodb://heroku_9d3ppsr0:a706flgp82q7qenmd166qmvq8d@ds051655.mlab.com:51655/heroku_9d3ppsr0';
+var uri = 'mongodb://vis2devmongo01.danlawinc.com:27017/local';
 
 var connection = mysql.createConnection({
   host: '192.168.53.120',
